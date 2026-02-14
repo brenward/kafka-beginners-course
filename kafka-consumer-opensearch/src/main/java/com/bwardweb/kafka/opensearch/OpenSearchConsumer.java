@@ -13,6 +13,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
 import org.opensearch.client.indices.GetIndexRequest;
@@ -57,6 +59,8 @@ public class OpenSearchConsumer {
                 int recordCount = records.count();
                 log.info("Recieved: " + recordCount + " records");
 
+                BulkRequest bulkRequest = new BulkRequest();
+
                 for(ConsumerRecord<String, String> record : records){
                     //Send record into opensearch
 
@@ -70,11 +74,23 @@ public class OpenSearchConsumer {
                         IndexRequest indexRequest = new IndexRequest("wikimedia")
                                 .source(record.value(), XContentType.JSON)
                                 .id(id);
-                        IndexResponse response = restHighLevelClient.index(indexRequest, RequestOptions.DEFAULT);
+                        //IndexResponse response = restHighLevelClient.index(indexRequest, RequestOptions.DEFAULT);
 
-                        log.info("Inserted: " + response.getId());
+                        bulkRequest.add(indexRequest);
                     }catch (Exception e){
                         log.error("Error in inserting record", e);
+                    }
+                }
+
+                if(bulkRequest.numberOfActions() > 0) {
+                    BulkResponse response = restHighLevelClient.bulk(bulkRequest, RequestOptions.DEFAULT);
+
+                    log.info("Inserted: " + response.getItems().length + " records");
+
+                    try{
+                        Thread.sleep(1000);
+                    }catch (InterruptedException e){
+                        log.error("Interrupted");
                     }
                 }
 
