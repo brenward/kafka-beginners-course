@@ -1,5 +1,6 @@
 package com.bwardweb.kafka.opensearch;
 
+import com.google.gson.JsonParser;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
@@ -57,9 +58,17 @@ public class OpenSearchConsumer {
 
                 for(ConsumerRecord<String, String> record : records){
                     //Send record into opensearch
+
+                    //Strategy 1 - define id using kafka record coordinates
+                    //String id = record.topic() + '_' + record.partition() + '_' + record.offset();
+
+                    //Strategy 2 - extract id from JSON
+                    String id = extractId(record.value());
+
                     try {
                         IndexRequest indexRequest = new IndexRequest("wikimedia")
-                                .source(record.value(), XContentType.JSON);
+                                .source(record.value(), XContentType.JSON)
+                                .id(id);
                         IndexResponse response = restHighLevelClient.index(indexRequest, RequestOptions.DEFAULT);
 
                         log.info("Inserted: " + response.getId());
@@ -78,6 +87,15 @@ public class OpenSearchConsumer {
         //CLose things
 
 
+    }
+
+    private static String extractId(String json){
+        return JsonParser.parseString(json)
+                .getAsJsonObject()
+                .get("meta")
+                .getAsJsonObject()
+                .get("id")
+                .getAsString();
     }
 
     public static RestHighLevelClient createOpenSearchClient() {
