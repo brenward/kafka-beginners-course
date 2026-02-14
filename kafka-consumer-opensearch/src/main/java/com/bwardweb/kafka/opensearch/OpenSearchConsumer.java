@@ -12,6 +12,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
@@ -38,6 +39,25 @@ public class OpenSearchConsumer {
 
         //Create Kafka Client
         KafkaConsumer<String,String> consumer = createKafkaConsumer();
+
+        log.info("Getting reference to the main thread to control shutdown");
+        final Thread mainThread = Thread.currentThread();
+
+        log.info("Adding shutdown hook");
+        Runtime.getRuntime().addShutdownHook(new Thread(){
+            public void run(){
+                log.info("Shutdown exiting: calling callout.wakeup");
+                consumer.wakeup();
+
+                log.info("Joingin main thread to allow execution of code in main thread");
+                try {
+                    mainThread.join();
+                }catch (InterruptedException ex){
+                    ex.printStackTrace();
+                }
+
+            }
+        });
 
         try(restHighLevelClient; consumer) {
             //We need to create index on opensearch if it doesn't exist
@@ -98,14 +118,15 @@ public class OpenSearchConsumer {
                 log.info("Offsets have been committed");
             }
 
+        }catch (WakeupException ex){
+            log.info("Consumer is starting to shutdown");
+        }catch (Exception ex){
+            log.info("Unexpected exception, ex");
+        }finally {
+            consumer.close();
+            restHighLevelClient.close();
+            log.info("Consumer shutdown gracefully");
         }
-
-
-
-        //Main Code logic
-
-        //CLose things
-
 
     }
 
